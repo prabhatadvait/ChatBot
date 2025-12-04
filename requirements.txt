@@ -1,0 +1,11 @@
+fastapi
+uvicorn[standard]
+python-multipart
+langchain
+qdrant-client
+sentence-transformers
+numpy
+pydantic
+aiofiles
+python-dotenv
+whisper @ git+https://github.com/openai/whisper.git
