@@ -1,1 +1,13 @@
 node_modules/
+# Python virtual environment
+chatbot_env/
+
+# PyCache
+__pycache__/
+
+# Node modules
+frontend/node_modules/
+
+# Environment variables
+*.env
+.env
