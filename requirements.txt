@@ -1,11 +1,22 @@
+# Core web framework
 fastapi
 uvicorn[standard]
 python-multipart
+
+# Vector DB + LangChain
 langchain
 qdrant-client
+
+# Embeddings + NLP + ML
 sentence-transformers
+transformers
+tokenizers
 numpy
 pydantic
+
+# File handling + env
 aiofiles
 python-dotenv
+
+# Optional: Whisper for audio transcription
 whisper @ git+https://github.com/openai/whisper.git
