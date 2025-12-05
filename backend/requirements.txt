@@ -1,12 +1,1 @@
-fastapi
-uvicorn[standard]
-python-multipart
-langchain
-qdrant-client
-sentence-transformers
-numpy
-pydantic
-aiofiles
-python-dotenv
-transformers
-tokenizers
+-r ../requirements.txt
