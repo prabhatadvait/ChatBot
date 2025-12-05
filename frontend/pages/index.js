@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef } from "react";
 
 export default function Home() {
   const [messages, setMessages] = useState([]);
@@ -9,7 +9,9 @@ export default function Home() {
 
   async function sendMessage() {
     if (!input.trim()) return;
+
     const userMsg = { role: "user", text: input };
+    setMessages(prev => [...prev, userMsg]);
 
     const res = await fetch(`${backend}/api/chat`, {
       method: "POST",
@@ -20,13 +22,13 @@ export default function Home() {
     const data = await res.json();
     const botMsg = { role: "assistant", text: data.answer };
 
-    setMessages(prev => [...prev, userMsg, botMsg]);
+    setMessages(prev => [...prev, botMsg]);
     setInput("");
   }
 
   async function uploadDocument() {
     const file = fileRef.current?.files[0];
-    if (!file) return alert("Select a file first.");
+    if (!file) return alert("Select a file.");
 
     const form = new FormData();
     form.append("file", file);
@@ -59,64 +61,171 @@ export default function Home() {
   async function resetChat() {
     await fetch(`${backend}/api/chat/reset`, { method: "POST" });
     setMessages([]);
-    alert("Chat history cleared.");
+    alert("Chat reset.");
   }
 
   return (
-    <div style={{ maxWidth: "800px", margin: "0 auto", padding: 20 }}>
-      <h1 style={{ fontSize: "24px", marginBottom: "20px" }}>
-        AI Chatbot
-      </h1>
+    <div style={styles.page}>
+      {/* NAVBAR */}
+      <div style={styles.navbar}>
+        <div style={styles.logo}>🤖 Secure AI</div>
+        <button onClick={resetChat} style={styles.navResetBtn}>Reset</button>
+      </div>
 
-      <div
-        style={{
-          border: "1px solid #ccc",
-          borderRadius: 6,
-          height: 400,
-          padding: 10,
-          overflowY: "auto",
-          background: "#fafafa"
-        }}
-      >
-        {messages.map((m, i) => (
-          <div key={i} style={{ margin: "10px 0" }}>
-            <strong>{m.role === "user" ? "You" : "Assistant"}:</strong>{" "}
-            {m.text}
+      {/* CHAT WINDOW */}
+      <div style={styles.chatWindow}>
+        {messages.map((msg, i) => (
+          <div
+            key={i}
+            style={{
+              ...styles.message,
+              alignSelf: msg.role === "user" ? "flex-end" : "flex-start",
+              background: msg.role === "user" ? "#6366f1" : "rgba(255,255,255,0.4)",
+              color: msg.role === "user" ? "#fff" : "#000",
+            }}
+          >
+            {msg.text}
           </div>
         ))}
       </div>
 
-      <div style={{ display: "flex", gap: 10, marginTop: 15 }}>
+      {/* FLOATING INPUT BAR */}
+      <div style={styles.inputContainer}>
         <input
           value={input}
           onChange={e => setInput(e.target.value)}
-          placeholder="Ask something..."
-          style={{
-            flex: 1,
-            padding: 10,
-            borderRadius: 6,
-            border: "1px solid #ccc"
-          }}
+          placeholder="Type your message..."
+          style={styles.input}
         />
-        <button onClick={sendMessage} style={{ padding: "10px 20px" }}>
-          Send
-        </button>
-      </div>
 
-      <div style={{ marginTop: 20 }}>
-        <input type="file" ref={fileRef} />
-      </div>
+        <button onClick={sendMessage} style={styles.sendBtn}>➤</button>
 
-      <div style={{ display: "flex", gap: 10, marginTop: 10 }}>
-        <button onClick={uploadDocument}>Upload Document</button>
-        <button onClick={uploadVoice}>Upload Voice</button>
-      </div>
+        <label style={styles.uploadBtn}>
+          📄
+          <input type="file" ref={fileRef} onChange={uploadDocument} style={styles.fileInput} />
+        </label>
 
-      <div style={{ marginTop: 20 }}>
-        <button onClick={resetChat} style={{ background: "#fee", padding: "10px 20px" }}>
-          New Chat (Reset)
-        </button>
+        <label style={styles.uploadBtn}>
+          🎤
+          <input type="file" ref={fileRef} onChange={uploadVoice} style={styles.fileInput} />
+        </label>
       </div>
     </div>
   );
 }
+
+/* ======================= STYLES ======================= */
+
+const styles = {
+  page: {
+    minHeight: "100vh",
+    background: "linear-gradient(135deg, #eef2ff, #c7d2fe)",
+    padding: "0px 20px",
+    display: "flex",
+    flexDirection: "column",
+  },
+
+  navbar: {
+    height: "70px",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    padding: "0 20px",
+    backdropFilter: "blur(12px)",
+    background: "rgba(255,255,255,0.2)",
+    borderRadius: "0 0 20px 20px",
+    boxShadow: "0 4px 20px rgba(0,0,0,0.1)",
+  },
+
+  logo: {
+    fontSize: "24px",
+    fontWeight: "bold",
+    color: "#4338ca",
+  },
+
+  navResetBtn: {
+    padding: "8px 14px",
+    background: "#f87171",
+    color: "#fff",
+    border: "none",
+    borderRadius: "8px",
+    cursor: "pointer",
+    fontWeight: "bold",
+  },
+
+  chatWindow: {
+    flex: 1,
+    marginTop: "20px",
+    padding: "20px",
+    overflowY: "auto",
+    display: "flex",
+    flexDirection: "column",
+    gap: "14px",
+    background: "rgba(255,255,255,0.3)",
+    borderRadius: "14px",
+    boxShadow: "0 4px 15px rgba(0,0,0,0.1)",
+  },
+
+  message: {
+    padding: "12px 16px",
+    borderRadius: "12px",
+    maxWidth: "70%",
+    fontSize: "15px",
+    lineHeight: "1.45",
+    animation: "fadeIn 0.3s ease",
+    wordBreak: "break-word",
+    boxShadow: "0 2px 8px rgba(0,0,0,0.12)"
+  },
+
+  /* Floating input bar */
+  inputContainer: {
+    display: "flex",
+    alignItems: "center",
+    gap: "10px",
+    padding: "14px",
+    position: "sticky",
+    bottom: "10px",
+    background: "rgba(255,255,255,0.6)",
+    backdropFilter: "blur(12px)",
+    borderRadius: "12px",
+    boxShadow: "0 4px 20px rgba(0,0,0,0.15)",
+  },
+
+  input: {
+    flex: 1,
+    padding: "12px",
+    fontSize: "16px",
+    borderRadius: "10px",
+    border: "1px solid #c7d2fe",
+    outline: "none",
+    background: "#f8fafc",
+  },
+
+  sendBtn: {
+    background: "#4f46e5",
+    color: "#fff",
+    padding: "10px 14px",
+    fontSize: "18px",
+    borderRadius: "10px",
+    border: "none",
+    cursor: "pointer",
+    fontWeight: "bold",
+  },
+
+  uploadBtn: {
+    padding: "10px 14px",
+    background: "#6366f1",
+    borderRadius: "10px",
+    color: "#fff",
+    cursor: "pointer",
+    fontSize: "18px",
+    fontWeight: "bold",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center"
+  },
+
+  fileInput: {
+    display: "none",
+  }
+};
