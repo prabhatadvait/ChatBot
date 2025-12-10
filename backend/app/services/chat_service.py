@@ -14,7 +14,9 @@ async def answer_query(query: str, top_k: int = 5) -> Dict[str, Any]:
     proper LLM chain (LangChain + model) when ready.
     """
     query_vector = EMBEDDER.embed_query(query)
+    print(f"DEBUG: Query vector len={len(query_vector)}")
     results = QDRANT.search(collection_name="documents", vector=query_vector, limit=top_k, with_payload=True)
+    print(f"DEBUG: Search returned {len(results)} hits")
     contexts = [hit["payload"]["text"] for hit in results]
     # For now, synthesize a naive answer by returning the most relevant context plus an echo
     answer = synthesize_answer(query, contexts)
@@ -22,15 +24,50 @@ async def answer_query(query: str, top_k: int = 5) -> Dict[str, Any]:
     QDRANT.upsert_chat(query=query, response=answer, vector=query_vector)
     return {"answer": answer, "retrieved_count": len(contexts), "contexts": contexts}
 
+import requests
+
 def synthesize_answer(query: str, contexts: List[str]) -> str:
     """
-    Very simple synthesizer: include the top context and echo the user's question.
-    Replace this with LLM call for production.
+    Synthesize an answer using Hugging Face Inference API (Mistral-7B).
     """
     if not contexts:
         return "I could not find relevant information in the ingested documents."
-    top_context = contexts[0]
-    return f"Based on retrieved document context:\n\n{top_context}\n\nUser Question:\n{query}\n\n(Replace this placeholder with a real LLM for natural responses.)"
+    
+    context_blob = "\n\n".join(contexts[:3]) # Limit to top 3 to fit context window
+    
+    # Prompt engineering for Mistral Instruct
+    prompt = f"<s>[INST] You are a helpful assistant. Use the following pieces of retrieved context to answer the question. If you don't know the answer, just say that you don't know.\n\nContext:\n{context_blob}\n\nQuestion: {query} [/INST]"
+    
+    api_key = os.getenv("HUGGINGFACE_API_KEY")
+    if not api_key:
+        return "Error: HUGGINGFACE_API_KEY not set."
+        
+    api_url = "https://api-inference.huggingface.co/models/mistralai/Mistral-7B-Instruct-v0.3"
+    headers = {"Authorization": f"Bearer {api_key}"}
+    payload = {
+        "inputs": prompt,
+        "parameters": {
+            "max_new_tokens": 512,
+            "temperature": 0.3,
+            "return_full_text": False
+        }
+    }
+    
+    try:
+        response = requests.post(api_url, headers=headers, json=payload, timeout=20)
+        results = response.json()
+        if isinstance(results, list) and "generated_text" in results[0]:
+            return results[0]["generated_text"].strip()
+        elif isinstance(results, dict) and "error" in results:
+             return f"Model Error: {results['error']}"
+        else:
+            return "Error parsing model response."
+    except Exception as e:
+        print(f"LLM Error: {e}")
+        return "I encountered an error connecting to the intelligence engine."
 
 async def reset_chat_history():
     QDRANT.clear_chat_collection()
+
+async def get_chat_history():
+    return QDRANT.get_recent_chats()

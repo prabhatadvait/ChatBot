@@ -17,6 +17,10 @@ pydantic
 # File handling + env
 aiofiles
 python-dotenv
+PyPDF2
 
 # Optional: Whisper for audio transcription
-whisper @ git+https://github.com/openai/whisper.git
+openai-whisper @ git+https://github.com/openai/whisper.git
+
+# HTTP Client
+requests
