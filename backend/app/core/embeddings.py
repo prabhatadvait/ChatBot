@@ -1,30 +1,48 @@
 import os
-from sentence_transformers import SentenceTransformer
 from typing import List
+from google import genai
+from google.genai import types
 
 class Embedder:
     """
-    Wrapper around sentence-transformers SentenceTransformer.
-    Default model: 'all-MiniLM-L6-v2' (small, fast, good performance).
+    Wrapper around Google Gemini Embedding API.
+    Default model: 'gemini-embedding-001'.
     """
 
-    def __init__(self, model_name: str = "all-MiniLM-L6-v2"):
+    def __init__(self, model_name: str = "gemini-embedding-001"):
         self.model_name = model_name
-        self.model = SentenceTransformer(model_name)
+        api_key = os.getenv("GEMINI_API_KEY")
+        if not api_key:
+            raise ValueError("GEMINI_API_KEY environment variable not set.")
+        self.client = genai.Client(api_key=api_key)
 
     @property
     def embedding_dim(self) -> int:
-        return self.model.get_sentence_embedding_dimension()
+        # gemini-embedding-001 has 768 dimensions
+        return 768
 
     def embed_documents(self, texts: List[str]) -> List[List[float]]:
         """
         Embed a list of texts -> returns list of vector lists.
         """
-        return self.model.encode(texts, show_progress_bar=False, convert_to_numpy=True).tolist()
+        # Batch embedding is supported by some clients, but basic usage:
+        embeddings = []
+        for text in texts:
+            result = self.client.models.embed_content(
+                model=self.model_name,
+                contents=text,
+            )
+            embeddings.append(result.embeddings[0].values)
+        return embeddings
 
     def embed_query(self, text: str) -> List[float]:
         """
         Embed a single query -> returns a single vector list.
         """
-        vec = self.model.encode([text], show_progress_bar=False, convert_to_numpy=True)
-        return vec[0].tolist()
+        result = self.client.models.embed_content(
+            model=self.model_name,
+            contents=text,
+        )
+        # result.embeddings is a list of ContentEmbedding objects
+        # accessing .values gives the float list
+        return result.embeddings[0].values

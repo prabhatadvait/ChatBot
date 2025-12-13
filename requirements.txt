@@ -8,9 +8,9 @@ langchain
 qdrant-client
 
 # Embeddings + NLP + ML
-sentence-transformers
-transformers
-tokenizers
+# Embeddings + NLP + ML
+google-genai
+
 numpy
 pydantic
 
@@ -19,8 +19,10 @@ aiofiles
 python-dotenv
 PyPDF2
 
-# Optional: Whisper for audio transcription
-google-genai
+# Audio Transcription (Local - Vosk)
+vosk
+
+
 
 # HTTP Client
 requests

@@ -1,10 +1,17 @@
 import os
+import sys
 from qdrant_client import QdrantClient
 from qdrant_client.http import models as rest
-from sentence_transformers import SentenceTransformer
 
-# Connect to Qdrant (using internal container hostname)
-QDRANT_HOST = os.getenv("QDRANT_HOST", "qdrant")
+# Add parent dir to path to import app modules
+sys.path.append(os.path.join(os.getcwd(), '..'))
+# If running from backend dir directly
+sys.path.append(os.getcwd())
+
+from app.core.embeddings import Embedder
+
+# Connect to Qdrant
+QDRANT_HOST = os.getenv("QDRANT_HOST", "localhost")
 QDRANT_PORT = int(os.getenv("QDRANT_PORT", 6333))
 url = f"http://{QDRANT_HOST}:{QDRANT_PORT}"
 
@@ -33,12 +40,12 @@ except Exception as e:
 # Test Embedding & Search
 print(f"\n--- Test Search ---")
 try:
-    model_name = os.getenv("EMBEDDING_MODEL", "all-MiniLM-L6-v2")
-    print(f"Loading model: {model_name}...")
-    model = SentenceTransformer(model_name)
+    # Use the new Embedder class which relies on Gemini
+    embedder = Embedder() 
+    print(f"Loading model: {embedder.model_name}...")
     
     query_text = "test query"
-    query_vector = model.encode(query_text).tolist()
+    query_vector = embedder.embed_query(query_text)
     print(f"Generated vector length: {len(query_vector)}")
 
     results = client.search(

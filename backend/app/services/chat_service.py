@@ -4,7 +4,7 @@ from app.core.embeddings import Embedder
 import os
 
 QDRANT = QdrantRepository()
-EMBEDDER = Embedder(model_name=os.getenv("EMBEDDING_MODEL", "all-MiniLM-L6-v2"))
+EMBEDDER = Embedder(model_name=os.getenv("EMBEDDING_MODEL", "gemini-embedding-001"))
 
 async def answer_query(query: str, top_k: int = 5) -> Dict[str, Any]:
     """
@@ -13,16 +13,28 @@ async def answer_query(query: str, top_k: int = 5) -> Dict[str, Any]:
     by concatenating retrieved contexts. Replace call to 'synthesize_answer' with a
     proper LLM chain (LangChain + model) when ready.
     """
-    query_vector = EMBEDDER.embed_query(query)
-    print(f"DEBUG: Query vector len={len(query_vector)}")
-    results = QDRANT.search(collection_name="documents", vector=query_vector, limit=top_k, with_payload=True)
-    print(f"DEBUG: Search returned {len(results)} hits")
-    contexts = [hit["payload"]["text"] for hit in results]
-    # For now, synthesize a naive answer by returning the most relevant context plus an echo
-    answer = synthesize_answer(query, contexts)
-    # store chat
-    QDRANT.upsert_chat(query=query, response=answer, vector=query_vector)
-    return {"answer": answer, "retrieved_count": len(contexts), "contexts": contexts}
+    try:
+        query_vector = EMBEDDER.embed_query(query)
+        print(f"DEBUG: Query vector len={len(query_vector)}")
+        
+        results = QDRANT.search(collection_name="documents", vector=query_vector, limit=top_k, with_payload=True)
+        print(f"DEBUG: Search returned {len(results)} hits")
+        
+        contexts = [hit["payload"]["text"] for hit in results]
+        
+        # For now, synthesize a naive answer by returning the most relevant context plus an echo
+        answer = synthesize_answer(query, contexts)
+        
+        # store chat
+        QDRANT.upsert_chat(query=query, response=answer, vector=query_vector)
+        
+        return {"answer": answer, "retrieved_count": len(contexts), "contexts": contexts}
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        print(f"ERROR in answer_query: {e}")
+        # Return a polite error message instead of crashing
+        return {"answer": f"I apologize, but I encountered an internal error: {str(e)}", "retrieved_count": 0, "contexts": []}
 
 from google import genai
 

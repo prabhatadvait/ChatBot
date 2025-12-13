@@ -114,7 +114,7 @@ class QdrantRepository:
         try:
             self.client.recreate_collection(
                 collection_name=self.chat_collection,
-                vectors_config=rest.VectorParams(size=384, distance=rest.Distance.COSINE),
+                vectors_config=rest.VectorParams(size=768, distance=rest.Distance.COSINE),
             )
         except Exception:
             pass
