@@ -24,47 +24,44 @@ async def answer_query(query: str, top_k: int = 5) -> Dict[str, Any]:
     QDRANT.upsert_chat(query=query, response=answer, vector=query_vector)
     return {"answer": answer, "retrieved_count": len(contexts), "contexts": contexts}
 
-import requests
+from google import genai
 
 def synthesize_answer(query: str, contexts: List[str]) -> str:
     """
-    Synthesize an answer using Hugging Face Inference API (Mistral-7B).
+    Synthesize an answer using Google Gemini API.
     """
     if not contexts:
         return "I could not find relevant information in the ingested documents."
     
-    context_blob = "\n\n".join(contexts[:3]) # Limit to top 3 to fit context window
+    # Gemini 2.0 Flash has a large context window, so we can include more chunks if needed.
+    # We'll stick to top 3-5 for now to keep it focused, but it can handle much more.
+    context_blob = "\n\n".join(contexts[:5]) 
     
-    # Prompt engineering for Mistral Instruct
-    prompt = f"<s>[INST] You are a helpful assistant. Use the following pieces of retrieved context to answer the question. If you don't know the answer, just say that you don't know.\n\nContext:\n{context_blob}\n\nQuestion: {query} [/INST]"
+    prompt = f"""You are a helpful assistant. Use the following pieces of retrieved context to answer the question. 
+If the answer is not in the context, say you don't know, but try to be helpful based on the context provided.
+
+Context:
+{context_blob}
+
+Question: {query}
+"""
     
-    api_key = os.getenv("HUGGINGFACE_API_KEY")
+    api_key = os.getenv("GEMINI_API_KEY")
     if not api_key:
-        return "Error: HUGGINGFACE_API_KEY not set."
+        return "Error: GEMINI_API_KEY not set."
         
-    api_url = "https://api-inference.huggingface.co/models/mistralai/Mistral-7B-Instruct-v0.3"
-    headers = {"Authorization": f"Bearer {api_key}"}
-    payload = {
-        "inputs": prompt,
-        "parameters": {
-            "max_new_tokens": 512,
-            "temperature": 0.3,
-            "return_full_text": False
-        }
-    }
-    
     try:
-        response = requests.post(api_url, headers=headers, json=payload, timeout=20)
-        results = response.json()
-        if isinstance(results, list) and "generated_text" in results[0]:
-            return results[0]["generated_text"].strip()
-        elif isinstance(results, dict) and "error" in results:
-             return f"Model Error: {results['error']}"
-        else:
-            return "Error parsing model response."
+        # Initialize client
+        client = genai.Client(api_key=api_key)
+        
+        response = client.models.generate_content(
+            model="gemini-2.5-flash", 
+            contents=prompt
+        )
+        return response.text
     except Exception as e:
-        print(f"LLM Error: {e}")
-        return "I encountered an error connecting to the intelligence engine."
+        print(f"Gemini Error: {e}")
+        return f"I encountered an error connecting to the intelligence engine: {e}"
 
 async def reset_chat_history():
     QDRANT.clear_chat_collection()

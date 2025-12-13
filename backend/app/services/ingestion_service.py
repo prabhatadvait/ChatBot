@@ -7,6 +7,7 @@ from app.core.text_splitter import split_text_into_chunks
 from app.core.embeddings import Embedder
 from app.repository.qdrant_repo import QdrantRepository
 import PyPDF2
+from google import genai
 
 # Instantiate embedder and repo (singleton-style)
 EMBEDDER = Embedder(model_name=os.getenv("EMBEDDING_MODEL", "all-MiniLM-L6-v2"))
@@ -47,27 +48,65 @@ async def ingest_document(file: UploadFile) -> int:
     QDRANT.upsert_documents(ids=ids, vectors=embeddings, payloads=[{"text": c, "source": filename} for c in chunks])
     return len(chunks)
 
-async def ingest_audio_file(file: UploadFile) -> int:
+async def transcribe_audio(file: UploadFile) -> str:
     """
-    Save uploaded audio to a temporary path and attempt transcription using
-    any available local transcription tool (not included here). For now,
-    this function raises NotImplementedError if transcription is not available.
+    Transcribe audio file using Google Gemini API.
     """
     # Save file temporarily
     temp_path = f"/tmp/{uuid.uuid4()}_{file.filename}"
     with open(temp_path, "wb") as f:
         f.write(await file.read())
 
-    # Placeholder: user should replace this block with a call to a local ASR (e.g., whisper)
-    # For now, try to use whisper if installed.
+    api_key = os.getenv("GEMINI_API_KEY")
+    if not api_key:
+        raise RuntimeError("GEMINI_API_KEY not set.")
+
     try:
-        import whisper
-        model = whisper.load_model("base")
-        result = model.transcribe(temp_path)
-        text = result.get("text", "")
+        client = genai.Client(api_key=api_key)
+        
+        # Upload file to Gemini
+        myfile = client.files.upload(file=temp_path)
+        
+        # Wait for file to be active
+        import time
+        start_time = time.time()
+        while myfile.state.name == "PROCESSING":
+            if time.time() - start_time > 60:
+                 raise RuntimeError("Timeout waiting for Gemini file processing.")
+            
+            time.sleep(2)
+            try:
+                myfile = client.files.get(name=myfile.name)
+            except Exception as e:
+                # transient error, just wait and try again
+                print(f"DEBUG: Transient error polling file state: {e}")
+                pass
+            
+        if myfile.state.name == "FAILED":
+             raise RuntimeError(f"Google Gemini File Processing Failed: {myfile.error.message}")
+        
+        # Generate transcription
+        response = client.models.generate_content(
+            model="gemini-2.5-flash", 
+            contents=["Transcribe this audio clip verbatim.", myfile]
+        )
+        return response.text
     except Exception as e:
-        # If transcription not available, inform caller; alternatively, you can fallback.
-        raise RuntimeError(f"Transcription failed or whisper not installed: {e}")
+        import traceback
+        traceback.print_exc()
+        print(f"DEBUG: Gemini Audio Transcription Error: {e}")
+        raise RuntimeError(f"Gemini Transcription failed: {e}")
+    finally:
+        # Cleanup temp file
+        if os.path.exists(temp_path):
+            os.remove(temp_path)
+
+async def ingest_audio_file(file: UploadFile) -> int:
+    """
+    Save uploaded audio to a temporary path and transcribe using Google Gemini API.
+    Then chunk and ingest the text.
+    """
+    text = await transcribe_audio(file)
 
     if not text.strip():
         raise RuntimeError("Transcription produced empty text.")

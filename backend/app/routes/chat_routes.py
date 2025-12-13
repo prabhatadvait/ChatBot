@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, UploadFile, File
 from pydantic import BaseModel
 from typing import Optional
 from app.services.chat_service import answer_query, reset_chat_history
@@ -42,5 +42,19 @@ async def get_history():
         from app.services.chat_service import get_chat_history
         history = await get_chat_history()
         return {"history": history}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.post("/transcribe")
+async def chat_transcribe(file: UploadFile = File(...)):
+    """
+    Transcribe audio file and return the text (for voice chat).
+    """
+    try:
+        from app.services.ingestion_service import transcribe_audio
+        text = await transcribe_audio(file)
+        # We explicitly return it in a format the frontend can easily consume.
+        # But for 'chat as query', returning pure text or {text: ...} is best.
+        return {"text": text}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

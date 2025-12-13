@@ -20,7 +20,7 @@ python-dotenv
 PyPDF2
 
 # Optional: Whisper for audio transcription
-openai-whisper @ git+https://github.com/openai/whisper.git
+google-genai
 
 # HTTP Client
 requests

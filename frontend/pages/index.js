@@ -100,9 +100,9 @@ export default function Home() {
     try {
       const res = await fetch(`${backend}/api/upload/document`, { method: "POST", body: form });
       const data = await res.json();
-      setMessages(prev => [...prev, { role: "system", text: `✅ processed. ${data.inserted} chunks stored.` }]);
+      setMessages(prev => [...prev, { role: "system", text: `processed. ${data.inserted} chunks stored.` }]);
     } catch (err) {
-      setMessages(prev => [...prev, { role: "system", text: "❌ Upload failed." }]);
+      setMessages(prev => [...prev, { role: "system", text: "Upload failed." }]);
     }
     setLoading(false);
   }
@@ -154,24 +154,17 @@ export default function Home() {
     form.append("file", file);
 
     try {
-      const res = await fetch(`${backend}/api/upload/voice`, { method: "POST", body: form });
-      // The backend 'ingest_audio_file' logic currently just ingests it. 
-      // Ideally it should return the transcribed text so we can assume it as a query?
-      // Wait, specific user request: "tap on the mic to record from my system and gave it as query"
-      // If the backend only *ingests* it (stores in vector DB), it won't trigger a chat response.
-      // We might need to adjust the backend to return the transcribed text, then we call sendMessage(text).
-      // Let's assume standard behavior for now: if ingestion returns chunks, we might not get the text back easily unless we mod backend.
-      // checking 'ingestion_service.py' again... it returns 'len(chunks)'.
-      // I should probably modify ingestion to return the text too if I want to use it as a query.
-      // For now, let's just show success.
-
+      const res = await fetch(`${backend}/api/chat/transcribe`, { method: "POST", body: form });
       const data = await res.json();
-      setMessages(prev => [...prev, { role: "system", text: `✅ Voice processed. ${data.inserted} chunks.` }]);
 
-      // If the user wants it as a QUERY, we need the text. 
-      // I will fix backend next to return text.
+      if (data.text) {
+        setMessages(prev => prev.filter(m => m.text !== "🎤 Processing voice..."));
+        sendMessage(data.text);
+      } else {
+        setMessages(prev => [...prev, { role: "system", text: "Voice processing failed (No text)." }]);
+      }
     } catch (err) {
-      setMessages(prev => [...prev, { role: "system", text: "❌ Voice processing failed." }]);
+      setMessages(prev => [...prev, { role: "system", text: "Voice processing failed." }]);
     }
     setLoading(false);
   }
