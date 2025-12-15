@@ -3,26 +3,16 @@ fastapi
 uvicorn[standard]
 python-multipart
 
-# Vector DB + LangChain
-langchain
+# Vector DB
 qdrant-client
 
 # Embeddings + NLP + ML
-# Embeddings + NLP + ML
 google-genai
-
-numpy
 pydantic
 
 # File handling + env
-aiofiles
 python-dotenv
 PyPDF2
 
-# Audio Transcription (Local - Vosk)
-vosk
-
-
-
-# HTTP Client
-requests
+# Audio Transcription
+SpeechRecognition
