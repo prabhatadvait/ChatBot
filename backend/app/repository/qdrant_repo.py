@@ -12,7 +12,12 @@ class QdrantRepository:
         url = f"http://{QDRANT_HOST}:{QDRANT_PORT}"
         self.client = QdrantClient(url=url)
         self.doc_collection = "documents"
-        self.chat_collection = "chats"
+        self.doc_collection = "documents"
+        self.chat_collection = "chats" # Stores individual messages
+        self.conversation_collection = "conversations" # Stores conversation metadata
+        self.folder_collection = "folders" # Stores folder metadata
+
+
         # ensure collections exist with a default vector size (will be recreated later once embedder available)
         # we will lazily create collections with correct vector size via set_collection_vector_size if needed
 
@@ -92,7 +97,7 @@ class QdrantRepository:
             results.append({"id": hit.id, "score": hit.score, "payload": payload})
         return results
 
-    def upsert_chat(self, query: str, response: str, vector: List[float]):
+    def upsert_chat(self, conversation_id: str, query: str, response: str, vector: List[float]):
         # store chat as a point in chat_collection
         try:
             info = self.client.get_collection(collection_name=self.chat_collection)
@@ -102,8 +107,123 @@ class QdrantRepository:
         except Exception:
             self.set_collection_vector_size(self.chat_collection, len(vector))
         import uuid
-        point = rest.PointStruct(id=str(uuid.uuid4()), vector=vector, payload={"query": query, "response": response})
+        import time
+        # We store the conversation_id in the payload so we can filter by it
+        point = rest.PointStruct(
+            id=str(uuid.uuid4()), 
+            vector=vector, 
+            payload={
+                "conversation_id": conversation_id,
+                "query": query, 
+                "response": response,
+                "timestamp": time.time()
+            }
+        )
         self.client.upsert(collection_name=self.chat_collection, points=[point])
+
+    def upsert_conversation(self, conversation_id: str, title: str, folder_id: str = None):
+        # We use a dummy vector for conversations as we just want to list them
+        # Alternatively, we could just rely on distinct conversation_ids in chat_collection, 
+        # but a separate collection is cleaner for listing "Recent Chats" without aggregation.
+        try:
+            self.client.get_collection(collection_name=self.conversation_collection)
+        except Exception:
+             # Create with size 1 dummy
+             self.client.recreate_collection(
+                 collection_name=self.conversation_collection,
+                 vectors_config=rest.VectorParams(size=1, distance=rest.Distance.COSINE),
+            )
+            
+        import time
+        payload = {
+            "title": title,
+            "updated_at": time.time()
+        }
+        if folder_id:
+            payload["folder_id"] = folder_id
+
+        point = rest.PointStruct(
+            id=conversation_id,
+            vector=[0.0], # Dummy
+            payload=payload
+        )
+        self.client.upsert(collection_name=self.conversation_collection, points=[point])
+
+    def delete_chat(self, conversation_id: str):
+        # Delete messages
+        try:
+            self.client.delete(
+                collection_name=self.chat_collection,
+                points_selector=rest.Filter(
+                    must=[
+                        rest.FieldCondition(
+                            key="conversation_id",
+                            match=rest.MatchValue(value=conversation_id)
+                        )
+                    ]
+                )
+            )
+        except Exception as e:
+            print(f"Error deleting chat messages: {e}")
+
+        # Delete conversation metadata
+        try:
+             self.client.delete(
+                collection_name=self.conversation_collection,
+                points_selector=rest.PointIdsList(points=[conversation_id])
+            )
+        except Exception as e:
+            print(f"Error deleting conversation metadata: {e}")
+
+    # --- Folder Management ---
+    def upsert_folder(self, folder_id: str, name: str):
+        try:
+            self.client.get_collection(collection_name=self.folder_collection)
+        except Exception:
+             self.client.recreate_collection(
+                 collection_name=self.folder_collection,
+                 vectors_config=rest.VectorParams(size=1, distance=rest.Distance.COSINE),
+            )
+        import time
+        point = rest.PointStruct(
+            id=folder_id,
+            vector=[0.0],
+            payload={"name": name, "created_at": time.time()}
+        )
+        self.client.upsert(collection_name=self.folder_collection, points=[point])
+
+    def delete_folder(self, folder_id: str):
+        try:
+            self.client.delete(
+                collection_name=self.folder_collection,
+                points_selector=rest.PointIdsList(points=[folder_id])
+            )
+            # Optionally: Un-link conversations in this folder? 
+            # For simplicity, we won't strictly enforce referential integrity here unless requested.
+            # But let's at least try to untag them if we were thorough. 
+            # For now, just deleting the folder is enough; chats will just have a dead folder_id or we can handle it in UI.
+        except Exception:
+            pass
+            
+    def get_folders(self) -> List[Dict[str, Any]]:
+        try:
+            response, _ = self.client.scroll(
+                collection_name=self.folder_collection,
+                limit=100,
+                with_payload=True
+            )
+            results = []
+            for point in response:
+                payload = point.payload or {}
+                results.append({
+                    "id": point.id,
+                    "name": payload.get("name", "Unnamed"),
+                    "created_at": payload.get("created_at", 0)
+                })
+            results.sort(key=lambda x: x["created_at"])
+            return results
+        except Exception:
+            return []
 
     def clear_chat_collection(self):
         try:
@@ -118,26 +238,76 @@ class QdrantRepository:
             )
         except Exception:
             pass
-
-    def get_recent_chats(self, limit: int = 50) -> List[Dict[str, Any]]:
+        
         try:
-            # Scroll through points to get history
+             self.client.delete_collection(collection_name=self.conversation_collection)
+        except Exception:
+            pass
+        try:
+            self.client.recreate_collection(
+                 collection_name=self.conversation_collection,
+                 vectors_config=rest.VectorParams(size=1, distance=rest.Distance.COSINE), # Dummy vector
+            )
+        except Exception:
+             pass
+
+    def get_conversations(self, limit: int = 50) -> List[Dict[str, Any]]:
+        try:
+            response, _ = self.client.scroll(
+                collection_name=self.conversation_collection,
+                limit=limit,
+                with_payload=True
+            )
+            # Sort by updated_at desc (client side sort if scroll doesn't support easy sort without creating payload index)
+            # For now, simplistic retrieval
+            results = []
+            for point in response:
+                payload = point.payload or {}
+                results.append({
+                    "id": point.id, # This is the conversation_id
+                    "title": payload.get("title", "New Chat"),
+                    "updated_at": payload.get("updated_at", 0),
+                    "folder_id": payload.get("folder_id")
+                })
+            results.sort(key=lambda x: x["updated_at"], reverse=True)
+            return results
+        except Exception as e:
+            # If collection missing, return empty
+            return []
+
+    def get_chat_history(self, conversation_id: str) -> List[Dict[str, Any]]:
+        try:
+            # We need to filter by conversation_id. 
+            # In Qdrant, we can use a Filter.
+            scroll_filter = rest.Filter(
+                must=[
+                    rest.FieldCondition(
+                        key="conversation_id",
+                        match=rest.MatchValue(value=conversation_id)
+                    )
+                ]
+            )
             response, _ = self.client.scroll(
                 collection_name=self.chat_collection,
-                limit=limit,
+                scroll_filter=scroll_filter,
+                limit=100, # Max messages per chat for now
                 with_payload=True
             )
             results = []
             for point in response:
                payload = point.payload or {}
-               # Only include if both query and response exist
                if payload.get("query") and payload.get("response"):
                    results.append({
                        "id": point.id,
                        "query": payload.get("query"),
-                       "response": payload.get("response")
+                       "response": payload.get("response"),
+                       "timestamp": payload.get("timestamp", 0)
                    })
+            results.sort(key=lambda x: x["timestamp"])
             return results
+        except Exception as e:
+            print(f"Error fetching chat history: {e}")
+            return []
         except Exception as e:
             print(f"Error fetching history: {e}")
             return []

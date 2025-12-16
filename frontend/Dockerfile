@@ -1,19 +1,22 @@
-FROM node:18-alpine
-
+# Stage 1: Builder
+FROM node:18-alpine AS builder
 WORKDIR /app
-
-# Copy package.json + lock file
 COPY package*.json ./
-
-# Install dependencies
-RUN npm install --omit=dev
-
-# Copy rest of the frontend code
+RUN npm ci
 COPY . .
-
-# Build Next.js app
 RUN npm run build
+
+# Stage 2: Runner
+FROM node:18-alpine AS runner
+WORKDIR /app
+ENV NODE_ENV=production
+
+# Copy only the standalone build and static files
+# Next.js standalone output puts the server at server.js
+COPY --from=builder /app/.next/standalone ./
+COPY --from=builder /app/.next/static ./.next/static
+
 
 EXPOSE 3000
 
-CMD ["npm", "start"]
+CMD ["node", "server.js"]

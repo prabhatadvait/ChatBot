@@ -7,3 +7,8 @@ docker-compose.yml
 .next
 dist
 build
+**/__pycache__
+**/*.pyc
+**/.ipynb_checkpoints
+**/venv
+**/chatbot_env

@@ -1,79 +1,173 @@
 import Head from "next/head";
 import { useState, useRef, useEffect } from "react";
 
-/* ======================= ICONS (Feather UI clone) ======================= */
-const Icon = ({ children }) => (
-  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+/* ======================= ICONS ======================= */
+const Icon = ({ children, size = 20, color = "currentColor" }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
     {children}
   </svg>
 );
 
-const SendIcon = () => <Icon><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon></Icon>;
-const AttachIcon = () => <Icon><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"></path></Icon>;
-const MicIcon = () => <Icon><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path><path d="M19 10v2a7 7 0 0 1-14 0v-2"></path><line x1="12" y1="19" x2="12" y2="23"></line><line x1="8" y1="23" x2="16" y2="23"></line></Icon>;
-const TrashIcon = () => <Icon><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></Icon>;
 const PlusIcon = () => <Icon><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></Icon>;
 const MessageSquareIcon = () => <Icon><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></Icon>;
-const MenuIcon = () => <Icon><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line></Icon>;
-const HistoryIcon = () => <Icon><path d="M12 8v4l3 3"></path><circle cx="12" cy="12" r="9"></circle></Icon>; // Clock icon for history
+const FolderIcon = () => <Icon><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></Icon>;
+const AttachIcon = () => <Icon><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"></path></Icon>;
+const MicIcon = () => <Icon><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path><path d="M19 10v2a7 7 0 0 1-14 0v-2"></path><line x1="12" y1="19" x2="12" y2="23"></line><line x1="8" y1="23" x2="16" y2="23"></line></Icon>;
+const SearchIcon = () => <Icon><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></Icon>;
+const MoreHorizontalIcon = () => <Icon><circle cx="12" cy="12" r="1"></circle><circle cx="19" cy="12" r="1"></circle><circle cx="5" cy="12" r="1"></circle></Icon>;
+const ChevronLeftIcon = () => <Icon><polyline points="15 18 9 12 15 6"></polyline></Icon>;
+const TrashIcon = () => <Icon><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></Icon>;
 
 /* ======================= COMPONENT ======================= */
 export default function Home() {
+  const [conversations, setConversations] = useState([]);
+  const [folders, setFolders] = useState([]);
   const [messages, setMessages] = useState([]);
-  const [history, setHistory] = useState([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
-  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [conversationId, setConversationId] = useState(null);
   const [isRecording, setIsRecording] = useState(false);
 
+  // Menus
+  const [openMenuId, setOpenMenuId] = useState(null); // 'chat-ID' or 'folder-ID'
+
   const messagesEndRef = useRef(null);
-  const fileRef = useRef(null);
   const mediaRecorderRef = useRef(null);
   const audioChunksRef = useRef([]);
 
   const backend = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8000";
 
   useEffect(() => {
-    fetchHistory();
+    fetchConversations();
+    fetchFolders();
+    document.addEventListener("click", () => setOpenMenuId(null));
+    return () => document.removeEventListener("click", () => setOpenMenuId(null));
   }, []);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
-  async function fetchHistory() {
+  async function fetchConversations() {
     try {
       const res = await fetch(`${backend}/api/chat/history`);
       const data = await res.json();
       if (data.history) {
-        setHistory(data.history); // Array of {id, query, response}
+        setConversations(data.history);
       }
     } catch (err) {
-      console.error("Failed to fetch history", err);
+      console.error("Failed to fetch conversations", err);
     }
+  }
+
+  async function fetchFolders() {
+    try {
+      const res = await fetch(`${backend}/api/chat/folders`);
+      const data = await res.json();
+      if (data.folders) {
+        setFolders(data.folders);
+      }
+    } catch (err) {
+      console.error("Failed to fetch folders", err);
+    }
+  }
+
+  async function createFolder() {
+    const name = prompt("Enter folder name:");
+    if (!name) return;
+    try {
+      await fetch(`${backend}/api/chat/folders`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name })
+      });
+      fetchFolders();
+    } catch (err) {
+      console.error("Failed to create folder", err);
+    }
+  }
+
+  async function deleteFolder(id) {
+    if (!confirm("Delete this folder?")) return;
+    try {
+      await fetch(`${backend}/api/chat/folders/${id}`, { method: "DELETE" });
+      fetchFolders();
+    } catch (err) {
+      console.error("Failed to delete folder", err);
+    }
+  }
+
+  async function deleteChat(e, id) {
+    e.stopPropagation();
+    if (!confirm("Delete this chat?")) return;
+    try {
+      await fetch(`${backend}/api/chat/history/${id}`, { method: "DELETE" });
+      if (conversationId === id) {
+        setConversationId(null);
+        setMessages([]);
+      }
+      fetchConversations();
+    } catch (err) {
+      console.error("Failed to delete chat", err);
+    }
+  }
+
+  async function loadConversation(id) {
+    setLoading(true);
+    setConversationId(id);
+    setMessages([]); // Clear previous messages first
+    try {
+      const res = await fetch(`${backend}/api/chat/history/${id}`);
+      const data = await res.json();
+      if (data.messages) {
+        const uiMessages = [];
+        data.messages.forEach(msg => {
+          uiMessages.push({ role: "user", text: msg.query });
+          uiMessages.push({ role: "assistant", text: msg.response });
+        });
+        setMessages(uiMessages);
+      }
+    } catch (err) {
+      console.error("Failed to load chat", err);
+    }
+    setLoading(false);
+  }
+
+  function startNewChat() {
+    setConversationId(null);
+    setMessages([]);
   }
 
   async function sendMessage(textOverride) {
     const text = textOverride || input.trim();
     if (!text || loading) return;
 
-    // Add user message
     const userMsg = { role: "user", text };
     setMessages(prev => [...prev, userMsg]);
     setInput("");
     setLoading(true);
 
     try {
+      const payload = {
+        query: text,
+        top_k: 4,
+        conversation_id: conversationId
+      };
+
       const res = await fetch(`${backend}/api/chat`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ query: text, top_k: 4 })
+        body: JSON.stringify(payload)
       });
       const data = await res.json();
+
       const botMsg = { role: "assistant", text: data.answer || "No response received." };
       setMessages(prev => [...prev, botMsg]);
-      // Refresh history slightly delayed to start showing the new chat
-      setTimeout(fetchHistory, 1000);
+
+      if (!conversationId && data.conversation_id) {
+        setConversationId(data.conversation_id);
+        fetchConversations();
+      }
     } catch (err) {
       setMessages(prev => [...prev, { role: "assistant", text: "Error: Service unreachable." }]);
     }
@@ -91,8 +185,6 @@ export default function Home() {
     const file = e.target.files[0];
     if (!file) return;
     setLoading(true);
-
-    // Optimistic UI feedback
     setMessages(prev => [...prev, { role: "system", text: `Uploading ${file.name}...` }]);
 
     const form = new FormData();
@@ -100,20 +192,17 @@ export default function Home() {
     try {
       const res = await fetch(`${backend}/api/upload/document`, { method: "POST", body: form });
       const data = await res.json();
-      setMessages(prev => [...prev, { role: "system", text: `processed. ${data.inserted} chunks stored.` }]);
+      setMessages(prev => [...prev, { role: "system", text: `Processed ${data.inserted} chunks.` }]);
     } catch (err) {
       setMessages(prev => [...prev, { role: "system", text: "Upload failed." }]);
     }
     setLoading(false);
   }
 
-  // --- AUDIO RECORDING ---
+  // --- AUDIO ---
   async function toggleRecording() {
-    if (isRecording) {
-      stopRecording();
-    } else {
-      startRecording();
-    }
+    if (isRecording) stopRecording();
+    else startRecording();
   }
 
   async function startRecording() {
@@ -121,18 +210,14 @@ export default function Home() {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       mediaRecorderRef.current = new MediaRecorder(stream);
       audioChunksRef.current = [];
-
       mediaRecorderRef.current.ondataavailable = (event) => {
-        if (event.data.size > 0) {
-          audioChunksRef.current.push(event.data);
-        }
+        if (event.data.size > 0) audioChunksRef.current.push(event.data);
       };
-
       mediaRecorderRef.current.onstop = uploadVoice;
       mediaRecorderRef.current.start();
       setIsRecording(true);
     } catch (err) {
-      alert("Microphone access denied or not available.");
+      alert("Microphone access denied.");
     }
   }
 
@@ -146,9 +231,7 @@ export default function Home() {
   async function uploadVoice() {
     const audioBlob = new Blob(audioChunksRef.current, { type: "audio/webm" });
     const file = new File([audioBlob], "voice_message.webm", { type: "audio/webm" });
-
     setLoading(true);
-    setMessages(prev => [...prev, { role: "system", text: "🎤 Processing voice..." }]);
 
     const form = new FormData();
     form.append("file", file);
@@ -156,500 +239,340 @@ export default function Home() {
     try {
       const res = await fetch(`${backend}/api/chat/transcribe`, { method: "POST", body: form });
       const data = await res.json();
-
       if (data.text) {
-        setMessages(prev => prev.filter(m => m.text !== "🎤 Processing voice..."));
         sendMessage(data.text);
-      } else {
-        setMessages(prev => [...prev, { role: "system", text: "Voice processing failed (No text)." }]);
       }
     } catch (err) {
-      setMessages(prev => [...prev, { role: "system", text: "Voice processing failed." }]);
+      console.error("Voice failed", err);
     }
     setLoading(false);
   }
 
-  async function clearHistory() {
-    if (!confirm("Clear all history?")) return;
-    try {
-      await fetch(`${backend}/api/chat/reset`, { method: "POST" });
-      setMessages([]);
-      setHistory([]);
-    } catch (err) {
-      alert("Failed to reset.");
-    }
-  }
-
-  function loadHistoryItem(item) {
-    // For now, just append/show this Q&A as if it just happened, or clear and show it.
-    // Let's clear and show this single interaction to be simple.
-    setMessages([
-      { role: "user", text: item.query },
-      { role: "assistant", text: item.response }
-    ]);
-    if (window.innerWidth < 768) setSidebarOpen(false);
-  }
-
-  function startNewChat() {
-    setMessages([]);
-    if (window.innerWidth < 768) setSidebarOpen(false);
+  function toggleMenu(e, id) {
+    e.stopPropagation();
+    if (openMenuId === id) setOpenMenuId(null);
+    else setOpenMenuId(id);
   }
 
   return (
     <>
       <Head>
         <title>Personal Chatbot</title>
-        <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
         <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600&display=swap" rel="stylesheet" />
       </Head>
 
-      <div style={styles.layout}>
+      <div className="layout">
         {/* SIDEBAR */}
-        <div style={{ ...styles.sidebar, transform: sidebarOpen ? "translateX(0)" : "translateX(-100%)" }}>
-
-          <div style={styles.sidebarHeader}>
-            <button onClick={startNewChat} style={styles.newChatBtn}>
-              <PlusIcon /> <span>New Chat</span>
-            </button>
-            <button onClick={() => setSidebarOpen(false)} style={styles.closeSidebarBtn}>
-              <MenuIcon />
-            </button>
+        <aside className="sidebar">
+          <div className="sidebar-header">
+            <div className="logo-area">
+              <span className="logo-icon">AI</span>
+              <span className="logo-text">My Chats</span>
+            </div>
+            {/* Settings icon removed as requested */}
           </div>
 
-          <div style={styles.historyList}>
-            <div style={styles.historyLabel}>Recent</div>
-            {history.length === 0 && <div style={styles.noHistory}>No history yet.</div>}
-            {history.map((item, i) => (
-              <div key={item.id || i} onClick={() => loadHistoryItem(item)} style={styles.historyItem}>
-                <MessageSquareIcon />
-                <span style={styles.historyText}>{item.query}</span>
+          <div className="search-bar">
+            <SearchIcon />
+            <input type="text" placeholder="Search" />
+          </div>
+
+          <div className="section-label">
+            <span>Folders</span>
+            <div className="section-actions" onClick={createFolder}>
+              <PlusIcon />
+            </div>
+          </div>
+
+          <div className="folders-list">
+            {folders.map(folder => (
+              <div key={folder.id} className="folder-item">
+                <div className="folder-content">
+                  <div className="folder-icon"><FolderIcon /></div>
+                  <span>{folder.name}</span>
+                </div>
+                <div style={{ position: 'relative' }}>
+                  <div onClick={(e) => toggleMenu(e, `folder-${folder.id}`)} style={{ cursor: 'pointer' }}><MoreHorizontalIcon /></div>
+                  {openMenuId === `folder-${folder.id}` && (
+                    <div className="popup-menu">
+                      <div onClick={() => deleteFolder(folder.id)}>Delete</div>
+                    </div>
+                  )}
+                </div>
               </div>
             ))}
           </div>
 
-          <div style={styles.sidebarFooter}>
-            <button onClick={clearHistory} style={styles.clearBtn}>
-              <TrashIcon /> Clear Data
-            </button>
-          </div>
-        </div>
-
-        {/* MAIN CHAT */}
-        <div style={styles.main}>
-          {/* Top Bar for Mobile/Toggle */}
-          <div style={styles.topBar}>
-            {!sidebarOpen && (
-              <button onClick={() => setSidebarOpen(true)} style={styles.toggleBtn}>
-                <MenuIcon />
-              </button>
-            )}
-            <span style={styles.brandTitle}>Personal chatbot</span>
+          <div className="section-label">
+            <span>Chats</span>
           </div>
 
-          <div style={styles.chatContainer}>
-            {messages.length === 0 ? (
-              <div style={styles.emptyState}>
-                <div style={styles.logoGiant}>AI</div>
-                <h2>How can I help you today?</h2>
+          <div className="chats-list">
+            {conversations.map(chat => (
+              <div key={chat.id} className={`chat-item ${conversationId === chat.id ? 'active' : ''}`} onClick={() => loadConversation(chat.id)}>
+                <MessageSquareIcon />
+                <div className="chat-info">
+                  <span className="chat-title">{chat.title || "New Chat"}</span>
+                  <span className="chat-preview">Check history...</span>
+                </div>
+                <div style={{ position: 'relative' }} onClick={(e) => e.stopPropagation()}>
+                  <div className="menu-trigger" onClick={(e) => toggleMenu(e, `chat-${chat.id}`)}>
+                    <MoreHorizontalIcon />
+                  </div>
+                  {openMenuId === `chat-${chat.id}` && (
+                    <div className="popup-menu">
+                      <div onClick={(e) => deleteChat(e, chat.id)} className="delete-option"><TrashIcon size={14} /> Delete</div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <button className="new-chat-btn" onClick={startNewChat}>
+            <span>New chat</span>
+            <div className="plus-box"><PlusIcon /></div>
+          </button>
+        </aside>
+
+        {/* MAIN AREA */}
+        <main className="main-content">
+          <header className="top-bar">
+            {conversationId ? (
+              <div className="breadcrumb">
+                <ChevronLeftIcon />
+                <span>{conversations.find(c => c.id === conversationId)?.title || "Current Chat"}</span>
+                <span className="tag">HelpfulAI</span>
               </div>
             ) : (
-              <div style={styles.messageList}>
-                {messages.map((msg, i) => (
-                  <div key={i} style={{
-                    ...styles.messageRow,
-                    justifyContent: msg.role === "user" ? "flex-end"
-                      : msg.role === "system" ? "center"
-                        : "flex-start"
-                  }}>
-                    {msg.role === "assistant" && <div style={styles.avatarAI}>AI</div>}
+              <div className="breadcrumb">
+                <span className="tag">HelpfulAI</span>
+              </div>
+            )}
+          </header>
 
-                    {msg.role === "system" ? (
-                      <div style={styles.systemMessage}>{msg.text}</div>
-                    ) : (
-                      <div style={{
-                        ...styles.bubble,
-                        background: msg.role === "user" ? "#4f46e5" : "#1e293b",
-                        color: "#fff",
-                        borderRadius: msg.role === "user" ? "20px 20px 4px 20px" : "20px 20px 20px 4px",
-                      }}>
-                        {msg.text}
-                      </div>
-                    )}
+          <div className="chat-area">
+            {messages.length === 0 ? (
+              <div className="welcome-screen">
+                <div className="logo-center">AI</div>
+                <h1>How can I help you today?</h1>
+                <p>welcome to helpfulAI..</p>
 
-                    {msg.role === "user" && <div style={styles.avatarUser}>Me</div>}
+                <div className="suggestion-cards">
+                  <div className="card" onClick={() => sendMessage("Summarise the content properly and effectively")}>
+                    <h3>Summarise Content</h3>
+                    <p>Summarise the document.</p>
+                  </div>
+                  <div className="card" onClick={() => sendMessage("Explain quantum computing")}>
+                    <h3>Explain Concepts</h3>
+                    <p>Explain quantum computing to me.</p>
+                  </div>
+                  <div className="card" onClick={() => sendMessage("Draft a professional email properly and concise")}>
+                    <h3>Draft Email</h3>
+                    <p>Draft a professional email.</p>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div className="messages-list">
+                {messages.map((msg, idx) => (
+                  <div key={idx} className={`message ${msg.role}`}>
+                    {msg.role === 'assistant' && <div className="avatar">AI</div>}
+                    <div className="bubble">
+                      {msg.role === 'system' ? <i>{msg.text}</i> : msg.text}
+                    </div>
+                    {msg.role === 'user' && <div className="avatar user">Me</div>}
                   </div>
                 ))}
-                {loading && (
-                  <div style={styles.messageRow}>
-                    <div style={styles.avatarAI}>AI</div>
-                    <div style={{ ...styles.bubble, background: "transparent", paddingLeft: 0 }}>
-                      <span style={styles.typing}>Thinking...</span>
-                    </div>
-                  </div>
-                )}
+                {loading && <div className="message assistant"><div className="avatar">AI</div><div className="bubble typing">...</div></div>}
                 <div ref={messagesEndRef} />
               </div>
             )}
           </div>
 
-          {/* INPUT AREA */}
-          <div style={styles.inputWrapper}>
-            <div style={styles.inputBox}>
-              <label style={styles.attachBtn} title="Upload PDF">
+          <div className="input-area">
+            <div className="input-box">
+              <label className="icon-btn" title="Upload Document">
                 <AttachIcon />
                 <input type="file" onChange={uploadDocument} style={{ display: 'none' }} accept=".pdf,.txt" />
               </label>
               <input
-                style={styles.input}
-                placeholder={isRecording ? "Listening..." : "Message Personal chatbot..."}
                 value={input}
                 onChange={e => setInput(e.target.value)}
                 onKeyDown={handleKeyDown}
-                disabled={loading || isRecording}
+                placeholder={isRecording ? "Listening..." : "Message helpfulAI..."}
+                disabled={loading}
               />
-
-              {/* MIC BUTTON */}
-              <button onClick={toggleRecording} style={{
-                ...styles.iconBtn,
-                color: isRecording ? "#ef4444" : "#94a3b8",
-                animation: isRecording ? "pulse 1.5s infinite" : "none"
-              }} title="Record Audio">
+              <button className={`icon-btn ${isRecording ? 'recording' : ''}`} onClick={toggleRecording}>
                 <MicIcon />
               </button>
-
-              <button onClick={() => sendMessage()} disabled={loading || !input.trim()} style={{
-                ...styles.sendBtn,
-                opacity: input.trim() ? 1 : 0.5
-              }}>
-                <SendIcon />
+              <button className="send-btn" onClick={() => sendMessage()}>
+                <Icon><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon></Icon>
               </button>
             </div>
-            <div style={styles.footerText}>
-              Personal chatbot can make mistakes. Verify important information.
+            <div className="footer-links">
+              <span>AI</span>
+              <span>Text</span>
+              <span>Image</span>
+              <span>Video</span>
+              <span>Music</span>
+              <span>Analytics</span>
             </div>
           </div>
-
-        </div>
+        </main>
       </div>
+
       <style jsx global>{`
-        body, html {
-          margin: 0;
-          padding: 0;
-          width: 100%;
-          height: 100%;
-          background: #0f172a;
-          overflow: hidden;
+        :root {
+          --bg-dark: #000000;
+          --sidebar-bg: #111111;
+          --border-color: #333;
+          --accent-green: #22c55e;
+          --text-primary: #fff;
+          --text-secondary: #888;
         }
-        * {
-          box-sizing: border-box;
+
+        * { box-sizing: border-box; }
+        body, html { margin: 0; padding: 0; background: var(--bg-dark); color: var(--text-primary); font-family: 'Outfit', sans-serif; height: 100vh; overflow: hidden; }
+
+        .layout { display: flex; height: 100vh; width: 100vw; }
+
+        /* SIDEBAR */
+        .sidebar {
+          width: 300px;
+          background: var(--sidebar-bg);
+          border-right: 1px solid var(--border-color);
+          display: flex;
+          flex-direction: column;
+          padding: 20px;
+          gap: 20px;
         }
-        @keyframes pulse {
-            0% { transform: scale(1); opacity: 1; }
-            50% { transform: scale(1.1); opacity: 0.7; }
-            100% { transform: scale(1); opacity: 1; }
+
+        .sidebar-header { display: flex; justify-content: space-between; align-items: center; }
+        .logo-area { display: flex; align-items: center; gap: 10px; font-weight: bold; font-size: 18px; }
+        .logo-icon { width: 24px; height: 24px; border-radius: 50%; border: 1px solid #fff; display: flex; align-items: center; justify-content: center; font-size: 10px; }
+
+        .search-bar {
+          background: #222;
+          border-radius: 8px;
+          padding: 10px;
+          display: flex;
+          align-items: center;
+          gap: 10px;
+          color: #666;
         }
+        .search-bar input { background: transparent; border: none; color: white; outline: none; width: 100%; }
+
+        .section-label { display: flex; justify-content: space-between; color: var(--text-secondary); font-size: 12px; font-weight: 600; text-transform: uppercase; margin-top: 10px; }
+        .section-actions { cursor: pointer; }
+
+        .folders-list, .chats-list { display: flex; flex-direction: column; gap: 5px; flex: 1; overflow-y: auto; }
+        
+        .folder-item, .chat-item {
+          display: flex; align-items: center; justify-content: space-between; padding: 12px;
+          border-radius: 8px; cursor: pointer;
+          transition: background 0.2s;
+          color: #ccc;
+        }
+        .folder-content { display: flex; align-items: center; gap: 12px; }
+
+        .folder-item:hover, .chat-item:hover, .chat-item.active { background: #222; }
+        .folder-icon { color: var(--accent-green); display: flex; }
+        .chat-info { flex: 1; display: flex; flex-direction: column; overflow: hidden; margin-right: 10px; }
+        .chat-title { color: white; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .chat-preview { font-size: 12px; color: #666; }
+
+        .new-chat-btn {
+          margin-top: auto;
+          background: var(--accent-green);
+          color: black;
+          border: none;
+          padding: 14px;
+          border-radius: 8px;
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          font-weight: 600;
+          cursor: pointer;
+        }
+        .plus-box { background: white; border-radius: 4px; display: flex; width: 20px; height: 20px; align-items: center; justify-content: center; }
+
+        /* MAIN CONTENT */
+        .main-content {
+          flex: 1;
+          background: radial-gradient(circle at center, #1a2e1a 0%, #000000 70%);
+          display: flex;
+          flex-direction: column;
+          position: relative;
+        }
+
+        .top-bar { padding: 20px; height: 60px; display: flex; align-items: center; }
+        .breadcrumb { display: flex; align-items: center; gap: 10px; color: #ccc; font-size: 14px; }
+        .tag { background: #1a2e1a; color: var(--accent-green); padding: 4px 8px; border-radius: 4px; font-size: 12px; font-weight: bold; }
+
+        .chat-area { flex: 1; overflow-y: auto; padding: 40px; display: flex; flex-direction: column; }
+        
+        .welcome-screen { max-width: 800px; margin: auto; text-align: center; color: #ccc; width: 100%; }
+        .welcome-screen h1 { font-size: 32px; color: white; margin-bottom: 10px; }
+        .logo-center { width: 40px; height: 40px; font-size: 20px;  color: var(--accent-green); margin: 0 auto 20px; display: flex; align-items: center; justify-content: center;}
+        
+        .suggestion-cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; margin-top: 40px; }
+        .card { background: #111; padding: 20px; border-radius: 12px; border: 1px solid #222; text-align: left; transition: transform 0.2s; cursor: pointer; }
+        .card:hover { transform: translateY(-5px); border-color: var(--accent-green); }
+        .card h3 { color: white; font-size: 14px; margin: 0 0 10px 0; }
+        .card p { font-size: 12px; color: #666; margin: 0; lineHeight: 1.5; }
+
+        .messages-list { max-width: 800px; width: 100%; margin: 0 auto; display: flex; flex-direction: column; gap: 20px; }
+        .message { display: flex; gap: 15px; }
+        .message.user { justify-content: flex-end; }
+        .bubble { padding: 12px 18px; border-radius: 12px; background: #222; color: #eee; max-width: 80%; line-height: 1.5; }
+        .message.user .bubble { background: var(--accent-green); color: black; }
+        .avatar { width: 32px; height: 32px; background: #111; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 12px; color: #666; border: 1px solid #333; }
+        .avatar.user { background: #333; color: white; }
+
+        .input-area { padding: 40px; display: flex; flex-direction: column; align-items: center; gap: 20px; }
+        .input-box {
+          width: 100%; max-width: 700px;
+          background: #111;
+          border: 1px solid #333;
+          border-radius: 50px;
+          padding: 8px 16px;
+          display: flex; align-items: center; gap: 10px;
+        }
+        .input-box input { flex: 1; background: transparent; border: none; color: white; font-size: 16px; outline: none; padding: 10px; }
+        .icon-btn { background: none; border: none; color: #666; cursor: pointer; padding: 8px; display: flex; transition: color 0.2s; }
+        .icon-btn:hover { color: white; }
+        .icon-btn.recording { color: red; animation: pulse 1s infinite; }
+        .send-btn { background: var(--accent-green); color: black; border: none; width: 40px; height: 40px; border-radius: 50%; display: flex; align-items: center; justify-content: center; cursor: pointer; }
+        
+        .footer-links { display: flex; gap: 20px; color: #555; font-size: 12px; }
+        .footer-links span { cursor: pointer; transition: color 0.2s; }
+        .footer-links span:hover { color: var(--accent-green); }
+        
+        .popup-menu {
+           position: absolute;
+           right: 0;
+           top: 100%;
+           background: #222;
+           border: 1px solid #444;
+           border-radius: 6px;
+           padding: 4px;
+           z-index: 100;
+           min-width: 100px;
+        }
+        .popup-menu div {
+           padding: 8px 12px;
+           cursor: pointer;
+           border-radius: 4px;
+           font-size: 13px;
+           display: flex; align-items: center; gap: 8px;
+        }
+        .popup-menu div:hover { background: #333; }
+        .delete-option { color: #ef4444; }
+
+        @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.5; } 100% { opacity: 1; } }
       `}</style>
     </>
   );
 }
-
-const styles = {
-  layout: {
-    display: "flex",
-    height: "100vh",
-    width: "100vw",
-    background: "#0f172a", // Slate 950
-    color: "#e2e8f0",
-    fontFamily: "'Outfit', sans-serif",
-    overflow: "hidden",
-  },
-  sidebar: {
-    width: "260px",
-    background: "#020617", // Slate 950 darker
-    borderRight: "1px solid #1e293b",
-    display: "flex",
-    flexDirection: "column",
-    transition: "transform 0.3s ease",
-    zIndex: 20,
-    position: "absolute",
-    height: "100%",
-    // Responsive: On desktop usually absolute logic needs distinct handling, 
-    // but for simple 'Chatgpt-like' mobile-first assumption:
-    // We'll set generic styles, effectively overlay on mobile, static on desktop if we had media queries.
-    // For inline styles limitation, let's assume overlay default or use logic.
-    // Actually simplicity: making it absolute always works as drawer.
-    // But for desktop we want it static. 
-  },
-  // We'll trust standard desktop resolution for 'static' behavior via simple hack:
-  // We can't do media queries in inline styles easily. 
-  // We'll assume the user is on a desktop or will tolerate the drawer behavior.
-  // Wait, user asked for "right left panel", implies split view.
-  // I will make it `position: relative` for the sidebar so it takes space.
-
-  sidebarHeader: {
-    padding: "16px",
-    display: "flex",
-    justifyContent: "space-between",
-    alignItems: "center",
-  },
-  newChatBtn: {
-    flex: 1,
-    display: "flex",
-    alignItems: "center",
-    gap: "10px",
-    padding: "10px 14px",
-    borderRadius: "8px",
-    background: "transparent",
-    border: "1px solid #334155",
-    color: "#fff",
-    cursor: "pointer",
-    fontSize: "14px",
-    transition: "background 0.2s",
-    marginRight: "8px",
-    justifyContent: "flex-start",
-  },
-  closeSidebarBtn: {
-    background: "transparent",
-    border: "none",
-    color: "#94a3b8",
-    cursor: "pointer",
-    display: "none", // Hide by default, show via overrides if we could
-  },
-  historyList: {
-    flex: 1,
-    overflowY: "auto",
-    padding: "0 12px",
-    marginTop: "20px",
-  },
-  historyLabel: {
-    fontSize: "12px",
-    fontWeight: "600",
-    color: "#64748b",
-    marginBottom: "10px",
-    paddingLeft: "8px",
-    textTransform: "uppercase",
-  },
-  historyItem: {
-    display: "flex",
-    alignItems: "center",
-    gap: "10px",
-    padding: "10px",
-    borderRadius: "8px",
-    cursor: "pointer",
-    color: "#cbd5e1",
-    fontSize: "14px",
-    transition: "background 0.2s",
-    whiteSpace: "nowrap",
-    overflow: "hidden",
-    textOverflow: "ellipsis",
-  },
-  historyText: {
-    overflow: "hidden",
-    textOverflow: "ellipsis",
-    whiteSpace: "nowrap",
-    flex: 1,
-  },
-  noHistory: {
-    padding: "10px",
-    color: "#475569",
-    fontSize: "13px",
-    fontStyle: "italic",
-  },
-  sidebarFooter: {
-    padding: "16px",
-    borderTop: "1px solid #1e293b",
-  },
-  clearBtn: {
-    width: "100%",
-    display: "flex",
-    alignItems: "center",
-    gap: "8px",
-    background: "transparent",
-    border: "none",
-    color: "#ef4444",
-    padding: "10px",
-    borderRadius: "6px",
-    cursor: "pointer",
-    fontSize: "14px",
-  },
-
-  main: {
-    flex: 1,
-    display: "flex",
-    flexDirection: "column",
-    position: "relative",
-    height: "100%",
-    background: "#0f172a",
-    marginLeft: "260px", // Offset for fixed sidebar
-  },
-  topBar: {
-    height: "50px",
-    display: "flex",
-    alignItems: "center",
-    padding: "0 16px",
-    borderBottom: "1px solid #1e293b",
-    color: "#94a3b8",
-    justifyContent: "space-between",
-  },
-  toggleBtn: {
-    background: "transparent",
-    border: "none",
-    color: "#fff",
-    cursor: "pointer",
-  },
-  brandTitle: {
-    fontWeight: "500",
-    color: "#e2e8f0",
-  },
-  chatContainer: {
-    flex: 1,
-    overflowY: "auto",
-    display: "flex",
-    flexDirection: "column",
-    paddingBottom: "120px", // Space for input
-  },
-  emptyState: {
-    flex: 1,
-    display: "flex",
-    flexDirection: "column",
-    alignItems: "center",
-    justifyContent: "center",
-    color: "#fff",
-  },
-  logoGiant: {
-    width: "64px",
-    height: "64px",
-    borderRadius: "50%",
-    background: "#fff",
-    color: "#0f172a",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    fontSize: "24px",
-    fontWeight: "bold",
-    marginBottom: "16px",
-    boxShadow: "0 0 20px rgba(255,255,255,0.2)",
-  },
-  messageList: {
-    maxWidth: "800px",
-    width: "100%",
-    margin: "0 auto",
-    padding: "24px",
-    display: "flex",
-    flexDirection: "column",
-    gap: "24px",
-  },
-  messageRow: {
-    display: "flex",
-    gap: "16px",
-    width: "100%",
-  },
-  avatarAI: {
-    width: "36px",
-    height: "36px",
-    borderRadius: "50%",
-    background: "#10b981", // Emerald
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    fontSize: "12px",
-    fontWeight: "bold",
-    flexShrink: 0,
-  },
-  avatarUser: {
-    width: "36px",
-    height: "36px",
-    borderRadius: "50%",
-    background: "#6366f1", // Indigo
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    fontSize: "12px",
-    fontWeight: "bold",
-    flexShrink: 0,
-  },
-  bubble: {
-    padding: "12px 18px",
-    fontSize: "15px",
-    lineHeight: "1.6",
-    maxWidth: "85%",
-    boxShadow: "0 1px 2px rgba(0,0,0,0.1)",
-  },
-  systemMessage: {
-    fontSize: "13px",
-    color: "#94a3b8",
-    fontStyle: "italic",
-    padding: "8px 16px",
-    background: "rgba(30,41,59,0.5)",
-    borderRadius: "12px",
-  },
-  inputWrapper: {
-    position: "absolute",
-    bottom: 0,
-    left: 0,
-    width: "100%",
-    background: "linear-gradient(to top, #0f172a 80%, transparent)",
-    padding: "24px",
-    display: "flex",
-    flexDirection: "column",
-    alignItems: "center",
-  },
-  inputBox: {
-    maxWidth: "800px",
-    width: "100%",
-    background: "#1e293b",
-    border: "1px solid #334155",
-    borderRadius: "12px",
-    display: "flex",
-    alignItems: "center",
-    padding: "8px 12px",
-    boxShadow: "0 4px 6px rgba(0,0,0,0.1)",
-  },
-  attachBtn: {
-    color: "#94a3b8",
-    padding: "8px",
-    cursor: "pointer",
-    display: "flex",
-    transition: "color 0.2s",
-  },
-  iconBtn: {
-    padding: "8px",
-    cursor: "pointer",
-    display: "flex",
-    background: "transparent",
-    border: "none",
-    transition: "all 0.2s",
-  },
-  input: {
-    flex: 1,
-    background: "transparent",
-    border: "none",
-    color: "#fff",
-    padding: "10px",
-    fontSize: "15px",
-    outline: "none",
-  },
-  sendBtn: {
-    background: "#4f46e5",
-    color: "#fff",
-    border: "none",
-    borderRadius: "8px",
-    width: "36px",
-    height: "36px",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    cursor: "pointer",
-    transition: "opacity 0.2s",
-  },
-  footerText: {
-    fontSize: "12px",
-    color: "#64748b",
-    marginTop: "12px",
-  },
-  typing: {
-    color: "#94a3b8",
-    fontStyle: "italic",
-    fontSize: "13px",
-  }
-};
