@@ -56,43 +56,45 @@ async def answer_query(query: str, conversation_id: str = None, top_k: int = 5) 
         # Return a polite error message instead of crashing
         return {"answer": f"I apologize, but I encountered an internal error: {str(e)}", "retrieved_count": 0, "contexts": []}
 
-from google import genai
+from langchain_google_genai import ChatGoogleGenerativeAI
+from langchain_core.prompts import PromptTemplate
+from langchain_core.runnables import RunnablePassthrough
+from langchain_core.output_parsers import StrOutputParser
 
 def synthesize_answer(query: str, contexts: List[str]) -> str:
     """
-    Synthesize an answer using Google Gemini API.
+    Synthesize an answer using Google Gemini API via LangChain.
     """
     if not contexts:
         return "I could not find relevant information in the ingested documents."
     
-    # Gemini 2.0 Flash has a large context window, so we can include more chunks if needed.
-    # We'll stick to top 3-5 for now to keep it focused, but it can handle much more.
-    context_blob = "\n\n".join(contexts[:5]) 
-    
-    prompt = f"""You are a helpful assistant. Use the following pieces of retrieved context to answer the question. 
-If the answer is not in the context, say you don't know, but try to be helpful based on the context provided.
-
-Context:
-{context_blob}
-
-Question: {query}
-"""
-    
     api_key = os.getenv("GEMINI_API_KEY")
     if not api_key:
         return "Error: GEMINI_API_KEY not set."
-        
+
     try:
-        # Initialize client
-        client = genai.Client(api_key=api_key)
+        # Initialize LangChain Chat Model
+        # Using gemini-2.5-flash as requested by user.
+        llm = ChatGoogleGenerativeAI(model="gemini-2.5-flash", google_api_key=api_key, temperature=0.7)
         
-        response = client.models.generate_content(
-            model="gemini-2.5-flash", 
-            contents=prompt
-        )
-        return response.text
+        context_blob = "\n\n".join(contexts[:5]) 
+        
+        template = """You are a helpful assistant. Use the following pieces of retrieved context to answer the question. 
+If the answer is not in the context, say you don't know, but try to be helpful based on the context provided.
+
+Context:
+{context}
+
+Question: {question}
+"""
+        prompt = PromptTemplate(template=template, input_variables=["context", "question"])
+        
+        chain = prompt | llm | StrOutputParser()
+        
+        response = chain.invoke({"context": context_blob, "question": query})
+        return response
     except Exception as e:
-        print(f"Gemini Error: {e}")
+        print(f"LangChain Error: {e}")
         return f"I encountered an error connecting to the intelligence engine: {e}"
 
 async def reset_chat_history():

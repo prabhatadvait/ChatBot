@@ -1,5 +1,6 @@
 import Head from "next/head";
 import { useState, useRef, useEffect } from "react";
+import ReactMarkdown from "react-markdown";
 
 /* ======================= ICONS ======================= */
 const Icon = ({ children, size = 20, color = "currentColor" }) => (
@@ -380,7 +381,7 @@ export default function Home() {
                   <div key={idx} className={`message ${msg.role}`}>
                     {msg.role === 'assistant' && <div className="avatar">AI</div>}
                     <div className="bubble">
-                      {msg.role === 'system' ? <i>{msg.text}</i> : msg.text}
+                      {msg.role === 'system' ? <i>{msg.text}</i> : <ReactMarkdown>{msg.text}</ReactMarkdown>}
                     </div>
                     {msg.role === 'user' && <div className="avatar user">Me</div>}
                   </div>

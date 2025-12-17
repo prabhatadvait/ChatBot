@@ -7,12 +7,14 @@ python-multipart
 qdrant-client
 
 # Embeddings + NLP + ML
-google-genai
+langchain
+langchain-google-genai
+langchain-community
 pydantic
 
 # File handling + env
 python-dotenv
-PyPDF2
+pypdf
 
 # Audio Transcription
 SpeechRecognition

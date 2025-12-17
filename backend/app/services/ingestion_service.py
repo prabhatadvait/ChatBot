@@ -8,7 +8,7 @@ from typing import List
 from app.core.text_splitter import split_text_into_chunks
 from app.core.embeddings import Embedder
 from app.repository.qdrant_repo import QdrantRepository
-import PyPDF2
+
 
 
 
@@ -23,35 +23,62 @@ async def ingest_document(file: UploadFile) -> int:
     Extract text from uploaded file (PDF or plain text), chunk it, embed chunks,
     and store in Qdrant. Returns number of inserted chunks.
     """
-    content = await file.read()
-    filename = file.filename or f"doc-{uuid.uuid4()}.txt"
-    text = ""
+    import shutil
+    from langchain_community.document_loaders import PyPDFLoader, TextLoader
+    from langchain_text_splitters import RecursiveCharacterTextSplitter
 
-    # PDF extraction
-    if filename.lower().endswith(".pdf"):
-        try:
-            reader = PyPDF2.PdfReader(io.BytesIO(content))
-            for page in reader.pages:
-                extracted = page.extract_text()
-                if extracted:
-                    text += extracted + "\n"
-        except Exception as e:
-            raise RuntimeError(f"PDF extraction failed: {e}")
-    else:
-        try:
-            text = content.decode(errors="ignore")
-        except Exception as e:
-            raise RuntimeError(f"Failed to decode file: {e}")
+    # Save uploaded file temporarily
+    input_path = f"/tmp/{uuid.uuid4()}_{file.filename}"
+    
+    try:
+        with open(input_path, "wb") as f:
+            shutil.copyfileobj(file.file, f)
+        
+        documents = []
+        if file.filename.lower().endswith(".pdf"):
+            loader = PyPDFLoader(input_path)
+            documents = loader.load()
+        else:
+            # Fallback for text files
+            loader = TextLoader(input_path)
+            documents = loader.load()
 
-    if not text.strip():
-        raise RuntimeError("No text extracted from the uploaded document.")
+        if not documents:
+             raise RuntimeError("No content extracted from document.")
 
-    chunks = split_text_into_chunks(text)
-    embeddings = EMBEDDER.embed_documents(chunks)
-    ids = [str(uuid.uuid4()) for _ in chunks]
-    # Upsert to qdrant
-    QDRANT.upsert_documents(ids=ids, vectors=embeddings, payloads=[{"text": c, "source": filename} for c in chunks])
-    return len(chunks)
+        # Combine content for simplified chunking or chunk normally
+        # PyPDFLoader returns one document per page usually.
+        # We can split these documents further or just use them.
+        # Requirements said: "read, chunk, and embed".
+        
+        text_splitter = RecursiveCharacterTextSplitter(
+            chunk_size=1000,
+            chunk_overlap=200,
+            separators=["\n\n", "\n", " ", ""]
+        )
+        
+        chunks_docs = text_splitter.split_documents(documents)
+        chunks = [doc.page_content for doc in chunks_docs]
+        
+        if not chunks:
+             raise RuntimeError("No text extracted from the uploaded document.")
+
+        embeddings = EMBEDDER.embed_documents(chunks)
+        ids = [str(uuid.uuid4()) for _ in chunks]
+        
+        # Upsert to qdrant
+        # Note: payloads can now include metadata like page number if we wanted, 
+        # but sticking to simple text payload for now to match current schema.
+        QDRANT.upsert_documents(ids=ids, vectors=embeddings, payloads=[{"text": c, "source": file.filename} for c in chunks])
+        return len(chunks)
+
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        raise RuntimeError(f"Document ingestion failed: {e}")
+    finally:
+        if os.path.exists(input_path):
+            os.remove(input_path)
 
 
 async def transcribe_audio(file: UploadFile) -> str:
